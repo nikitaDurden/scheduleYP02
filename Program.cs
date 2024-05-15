@@ -1,6 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Threading;
 
 public class ScheduleItem
 {
@@ -19,7 +22,15 @@ public class ScheduleItem
 
     public override string ToString()
     {
-        return $"{DayOfWeek}: {Time} - {Subject} ({Classroom})";
+        // Переводим день недели на русский язык
+        string dayOfWeekRussian = DayOfWeekToString(DayOfWeek);
+        return $"{dayOfWeekRussian}: {Time} - {Subject} ({Classroom})";
+    }
+
+    private string DayOfWeekToString(DayOfWeek dayOfWeek)
+    {
+        // Используем CultureInfo для перевода дня недели
+        return CultureInfo.GetCultureInfo("ru-RU").DateTimeFormat.GetDayName(dayOfWeek);
     }
 }
 
@@ -34,11 +45,13 @@ public class Schedule
 
     public void AddScheduleItem(ScheduleItem item)
     {
+        if (item == null) throw new ArgumentNullException(nameof(item));
         scheduleItems.Add(item);
     }
 
     public void RemoveScheduleItem(ScheduleItem item)
     {
+        if (item == null) throw new ArgumentNullException(nameof(item));
         scheduleItems.Remove(item);
     }
 
@@ -49,20 +62,21 @@ public class Schedule
 
     public List<ScheduleItem> GetScheduleForDay(DayOfWeek dayOfWeek)
     {
-        List<ScheduleItem> daySchedule = new List<ScheduleItem>();
-        foreach (var item in scheduleItems)
-        {
-            if (item.DayOfWeek == dayOfWeek)
-            {
-                daySchedule.Add(item);
-            }
-        }
-        daySchedule.Sort((x, y) => x.Time.CompareTo(y.Time));
-        return daySchedule;
+        // Используем LINQ для фильтрации и сортировки расписания по времени
+        return scheduleItems
+            .Where(item => item.DayOfWeek == dayOfWeek)
+            .OrderBy(item => item.Time)
+            .ToList();
     }
 
     public void PrintSchedule(List<ScheduleItem> schedule)
     {
+        if (schedule == null || schedule.Count == 0)
+        {
+            Console.WriteLine("Расписание пусто.");
+            return;
+        }
+
         foreach (var item in schedule)
         {
             Console.WriteLine(item);
@@ -71,33 +85,51 @@ public class Schedule
 
     public void SaveToFile(string filePath)
     {
-        using (StreamWriter writer = new StreamWriter(filePath))
+        if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("Некорректный путь к файлу.");
+
+        try
         {
-            foreach (var item in scheduleItems)
+            using (StreamWriter writer = new StreamWriter(filePath))
             {
-                writer.WriteLine($"{item.DayOfWeek},{item.Time},{item.Subject},{item.Classroom}");
+                foreach (var item in scheduleItems)
+                {
+                    writer.WriteLine($"{item.DayOfWeek},{item.Time},{item.Subject},{item.Classroom}");
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при сохранении файла: {ex.Message}");
         }
     }
 
     public void LoadFromFile(string filePath)
     {
+        if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("Некорректный путь к файлу.");
+
         scheduleItems.Clear();
-        using (StreamReader reader = new StreamReader(filePath))
+        try
         {
-            string line;
-            while ((line = reader.ReadLine()) != null)
+            using (StreamReader reader = new StreamReader(filePath))
             {
-                string[] parts = line.Split(',');
-                if (parts.Length == 4)
+                string line;
+                while ((line = reader.ReadLine()) != null)
                 {
-                    DayOfWeek dayOfWeek = (DayOfWeek)Enum.Parse(typeof(DayOfWeek), parts[0]);
-                    TimeSpan time = TimeSpan.Parse(parts[1]);
-                    string subject = parts[2];
-                    string classroom = parts[3];
-                    scheduleItems.Add(new ScheduleItem(dayOfWeek, time, subject, classroom));
+                    string[] parts = line.Split(',');
+                    if (parts.Length == 4 &&
+                        Enum.TryParse(parts[0], out DayOfWeek dayOfWeek) &&
+                        TimeSpan.TryParse(parts[1], out TimeSpan time))
+                    {
+                        string subject = parts[2];
+                        string classroom = parts[3];
+                        scheduleItems.Add(new ScheduleItem(dayOfWeek, time, subject, classroom));
+                    }
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка при загрузке файла: {ex.Message}");
         }
     }
 }
@@ -106,6 +138,10 @@ class Program
 {
     static void Main(string[] args)
     {
+        // Устанавливаем культуру для текущего потока на русскую
+        Thread.CurrentThread.CurrentCulture = new CultureInfo("ru-RU");
+        Thread.CurrentThread.CurrentUICulture = new CultureInfo("ru-RU");
+
         Schedule schedule = new Schedule();
 
         // Для тестирования, добавим несколько записей
@@ -133,7 +169,7 @@ class Program
         // Печатаем расписание на определенный день (например, понедельник)
         DayOfWeek dayToPrint = DayOfWeek.Monday;
         List<ScheduleItem> mondaySchedule = schedule.GetScheduleForDay(dayToPrint);
-        Console.WriteLine($"\nРасписание на {dayToPrint}:");
+        Console.WriteLine($"\nРасписание на {CultureInfo.GetCultureInfo("ru-RU").DateTimeFormat.GetDayName(dayToPrint)}:");
         schedule.PrintSchedule(mondaySchedule);
     }
 }
